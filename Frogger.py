@@ -1,4 +1,8 @@
 import pygame, random
+from math import sqrt
+
+def pythag(a, b):
+    return sqrt(a*a + b*b)
 
 def pointRectIntersect(pt, r):
     rx,ry,rw,rh = r[0],r[1],r[2],r[3]
@@ -32,12 +36,20 @@ def rectRectIntersect(a,b):
         return True
     elif pointRectIntersect((bx,by+bh),a):
         return True
+    # test the center of a inside b
+    elif pointRectIntersect((ax+aw/2,ay+ah/2),b):
+        return True
+    # test the center of b inside a
+    elif pointRectIntersect((bx+bw/2,by+bh/2),a):
+        return True
     return False
 
 class Game ():
     def __init__ (self,screenW = 800,screenH = 600):
         self.screenW = screenW
         self.screenH = screenH
+        pygame.font.init()
+        self.arcadeFont = pygame.font.Font("ARCADECLASSIC.TTF",100)
         pygame.init()
         self.screen = pygame.display.set_mode((self.screenW,self.screenH))
         self.gameOver = False
@@ -45,6 +57,9 @@ class Game ():
         self.deltaT = 0
         self.rowHeight = self.screenH//16
         self.lanePositions = [(0,self.rowHeight*3),(self.screenW,self.rowHeight*4),(0,self.rowHeight*5),(self.screenW,self.rowHeight*6)] 
+        # audio
+        pygame.mixer.init()
+        
     
     def setup(self):
         self.carsIm = ['Frogger Images/Car 1.png','Frogger Images/Car 2.png','Frogger Images/Car 3.png','Frogger Images/Tractor.png','Frogger Images/Lorry.png']
@@ -76,7 +91,7 @@ class Game ():
 
         self.logLanes = [[self.rowHeight*4,0],
                       [self.rowHeight*5,0],
-                      [self.rowHeight*6,1]]
+                      [self.rowHeight*2,1]]
         self.logsIm = ['Frogger Images/Log L.png','Frogger Images/Log M.png','Frogger Images/Log R.png']
         self.logs = []
         for lane in self.logLanes:
@@ -101,20 +116,27 @@ class Game ():
                     else:
                         imChoice = self.logsIm[1]
                     self.logs.append(Moving(sectionXPos,lane[0],pygame.image.load(imChoice), minSpeed = laneSpeed, maxSpeed = laneSpeed, width = w,startDir=lane[1]))
-
-        '''self.car = Moving(self.screenW//2 - 100,self.screenH//2,pygame.image.load(random.choice(self.carsIm)))
-        #self.car1 = Moving(self.screenW//2 + 100,self.screenH//2,pygame.image.load(r'Frogger Images/frogSit.png'))
-        
-        for i in range(100):
-            imChoice = random.choice(self.carsIm)
-            if imChoice == 'Frogger Images/Lorry.png':
-                self.cars.append(Moving(random.uniform(0,self.screenW),
-                    random.uniform(0,self.screenH),pygame.image.load(imChoice),64,32,1))
-            else:
-                self.cars.append(Moving(random.uniform(0,self.screenW),
-                    random.uniform(0,self.screenH),pygame.image.load(imChoice),startDir=1)) '''
-
-
+        self.turtleLanes = [[self.rowHeight*3,0],
+                            [self.rowHeight*6,1]]
+        self.turtlesIm = ['Frogger Images/Turtle 1.png','Frogger Images/Turtle 2.png','Frogger Images/Turtle 3.png','Frogger Images/Turtle 4.png','Frogger Images/Turtle 5.png']
+        self.turtles = []
+        for lane in self.turtleLanes:
+            numTurtles = 3
+            laneSpeed = -random.randint(2,3)
+            w = 32
+            laneTurtleXs = []
+            for i in range(numTurtles):
+                turtleWidth = 3
+                xRand = random.randint(0,self.screenW)
+                # TODO: do this, make sure we don't generate one log on top of another!
+                for otherTurtleX in laneTurtleXs:
+                    while abs(xRand - otherTurtleX) < w*2:
+                        xRand = random.randint(0,self.screenW)
+                for section in range(turtleWidth):
+                    sectionXPos = xRand+(w*section)
+                    laneTurtleXs.append(sectionXPos)
+                    imChoice = self.turtlesIm[1]
+                    self.turtles.append(Moving(sectionXPos,lane[0],pygame.image.load(imChoice), minSpeed = laneSpeed, maxSpeed = laneSpeed, width = w,startDir=lane[1],animates=True,animTime=200,animImages=[pygame.image.load(self.turtlesIm[1]),pygame.image.load(self.turtlesIm[2])]))
 
     def play(self):
         self.setup()
@@ -130,15 +152,26 @@ class Game ():
     
     def endGame(self):
         while self.gameOver:
-            self.doInteraction()
-            self.doDraw()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    exit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        exit()
+                    if event.key == pygame.K_RETURN:
+                        self.gameOver = False
+                        
+            if self.gameOver:
+                self.doInteraction()
+                self.doDraw()
             # TODO: display end game text
             self.deltaT = self.clock.tick(30)
+        self.play()
     
     def doInput(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                self.gameOver = True
+                exit()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT:
                     self.frogger.onLeftArrowPressed()
@@ -148,14 +181,25 @@ class Game ():
                     self.frogger.onUpArrowPressed()
                 if event.key == pygame.K_DOWN:
                     self.frogger.onDownArrowPressed()
+                if event.key == pygame.K_ESCAPE:
+                    exit()
     
     def doDraw(self):
         self.screen.fill((0,0,10))
+        riverRect = pygame.Rect(0,0,self.screenW,self.rowHeight*7)
+        pygame.draw.rect(self.screen,(0,0,100),riverRect)
         for log in self.logs:
             log.draw(self.screen)
+        for turtle in self.turtles:
+            turtle.draw(self.screen)
         self.frogger.draw(self.screen)
         for car in self.cars:
             car.draw(self.screen)
+        if self.gameOver:
+            gameOverText = self.arcadeFont.render("GAME     OVER",True,(0,255,255))
+            gameOverTextRect = gameOverText.get_rect()
+            gameOverTextRect.center = (self.screenW//2,self.screenW//2 - 50)
+            self.screen.blit(gameOverText, gameOverTextRect)
         pygame.display.update()
 
     def doInteraction(self):
@@ -165,24 +209,40 @@ class Game ():
             #print("HIT!")
         #self.car1.update()
         for car in self.cars:
-            car.update(self.screenW)
+            dist = car.distTo(self.frogger.pos)
+            car.update(self.screenW,dist) 
             if car.collision(self.frogger):
-                print("HIT!")
                 self.frogger.death()
                 self.gameOver = True
                 return
+        
         for log in self.logs:
             log.update(self.screenW)
-            if self.frogger.pos[1] >= self.rowHeight*4 and self.frogger.pos[1] < self.rowHeight*7:
+        
+        for turtle in self.turtles:
+            turtle.update(self.screenW,self.deltaT)
+
+        if self.frogger.pos[1] >= self.rowHeight*2 and self.frogger.pos[1] < self.rowHeight*7:
+            onLog = False
+            for log in self.logs:
                 if log.collision(self.frogger):
                     # TODO: Fix this, strange motion...
                     self.diff = log.pos[0] - self.frogger.pos[0]
                     self.frogger.pos[0] += self.diff
-                else:
-                    print("SINK")
-                    self.frogger.death()
-                    self.gameOver = True
+                    onLog = True
                     return
+            onTurtle = False
+            for turtle in self.turtles:
+                if turtle.collision(self.frogger):
+                    # TODO: Fix this, strange motion...
+                    self.diff = turtle.pos[0] - self.frogger.pos[0]
+                    self.frogger.pos[0] += self.diff
+                    onTurtle = True
+                    return
+            if not onLog and not onTurtle:
+                self.frogger.death()
+                self.gameOver = True
+                return
 
 class Frogger():
     def __init__(self, froggerSitIm, froggerJumpIm, scale = 32, jmpAmt = 5, jmpTime = 1000, pos = [400,300]):
@@ -240,22 +300,40 @@ class Frogger():
         
 
 class Moving():
-    def __init__(self,startX,startY, image,  width = 32, height = 32, startDir = 0, minSpeed = 3,maxSpeed = 10, spawnChance = 1):
+    def __init__(self,startX,startY, image,  width = 32, height = 32, startDir = 0, minSpeed = 3,maxSpeed = 10, spawnChance = 1, dissapears = False, minDissapear = 3,maxDissapear = 8, animTime = 0.5, animates = False, animImages = []):
         self.startPos = [startX,startY]
         self.speed = random.uniform(minSpeed,maxSpeed)
         self.pos = self.startPos
+        self.animates = animates
+        self.animDeltaT = 0
+        self.animTime = animTime
+        self.animCounter = 0
+        self.dissapears = dissapears
+        self.dissapearTime = random.uniform(minDissapear,maxDissapear)
+        self.dissppearCounter = 0
         self.width = width
         self.height = height
         self.dir = startDir
         self.spawnChance = spawnChance
         self.scale = width
         self.image = pygame.transform.scale(image,(width,height))
+        self.animImages = []
+        self.beep1 = pygame.mixer.Sound("Sounds/beep1.wav")
+        self.beep2 = pygame.mixer.Sound("Sounds/beep2.wav")
+        self.carEngineLoop = pygame.mixer.Sound("Sounds/CarEngineLoop.wav")
+        for im in animImages:
+            self.animImages.append(pygame.transform.scale(im,(width,height)))
 
     def draw(self,surf):
         movingRect = self.image.get_rect()
         surf.blit(self.image, (self.pos[0],self.pos[1],movingRect[2],movingRect[3]))
 
-    def update(self,screenW):
+    def distTo(self,otherPos):
+        a = self.pos[0] - otherPos[0]
+        b = self.pos[1] - otherPos[1]
+        return pythag(a,b)
+
+    def update(self,screenW,dist = 0,deltaT = 0):
         if self.dir == 0:
             self.pos[0] += self.speed
         elif self.dir == 1:
@@ -264,6 +342,25 @@ class Moving():
             self.pos[0] = -self.width  
         if self.pos[0] < -self.width:
             self.pos[0] = screenW
+
+        # Sound
+        
+        self.carEngineLoop.set_volume(dist)
+        self.carEngineLoop.play(-1)
+        
+        if self.animates:
+            if self.animDeltaT > self.animTime:
+                self.animCounter += 1
+                self.animDeltaT -= self.animTime
+            self.image = self.animImages[self.animCounter%len(self.animImages)]
+            self.animDeltaT += deltaT
+        
+        if self.dissapears:
+            if self.dissppearCounter >= self.dissapearTime:
+                #TODO: make the turtle dissapear
+                pass
+            self.dissppearCounter += deltaT
+
 
     def collision(self,other):
         a = (self.pos[0],self.pos[1],self.width,self.height)

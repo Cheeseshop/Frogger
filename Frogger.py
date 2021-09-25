@@ -49,27 +49,34 @@ class Game ():
         self.screenW = screenW
         self.screenH = screenH
         pygame.font.init()
-        self.arcadeFont = pygame.font.Font("ARCADECLASSIC.TTF",100)
         pygame.init()
         self.screen = pygame.display.set_mode((self.screenW,self.screenH))
         self.gameOver = False
         self.clock = pygame.time.Clock()
+        self.score = 0
         self.deltaT = 0
         self.rowHeight = self.screenH//16
         self.lanePositions = [(0,self.rowHeight*3),(self.screenW,self.rowHeight*4),(0,self.rowHeight*5),(self.screenW,self.rowHeight*6)] 
         # audio
         pygame.mixer.init()
+        self.riverNoise = pygame.mixer.Sound("Sounds/Water.wav")
+        # fonts
+        self.arcadeFont = pygame.font.Font("ARCADECLASSIC.TTF",100)
+        self.arcadeFontSmall = pygame.font.Font("ARCADECLASSIC.TTF",30)
         
     
     def setup(self):
         self.carsIm = ['Frogger Images/Car 1.png','Frogger Images/Car 2.png','Frogger Images/Car 3.png','Frogger Images/Tractor.png','Frogger Images/Lorry.png']
-        self.frogger = Frogger(pygame.image.load(r'Frogger Images/frogSit.png'),pygame.image.load(r'Frogger Images/frogJump.png'),jmpAmt=self.rowHeight,jmpTime=200,pos=[self.screenW//2,self.screenH-self.rowHeight])
+        self.frogger = Frogger(pygame.image.load(r'Frogger Images/frogSit.png'),pygame.image.load(r'Frogger Images/frogJump.png'),jmpAmt=self.rowHeight,jmpTime=200,pos=[self.screenW//2,self.screenH-self.rowHeight],scale = 22)
         self.carLanes = [[self.screenH-self.rowHeight*2,0],
                       [self.screenH-self.rowHeight*3,0],
                       [self.screenH-self.rowHeight*4,1],
                       [self.screenH-self.rowHeight*5,1],
                       [self.screenH-self.rowHeight*6,0]]
         self.cars = []
+        self.victory = False
+        self.victoryTime = 0
+        self.highestRow = 0
         for lane in self.carLanes:
             numCars = random.randint(1,5)
             imChoice = random.choice(self.carsIm)
@@ -115,7 +122,7 @@ class Game ():
                         imChoice = self.logsIm[2]
                     else:
                         imChoice = self.logsIm[1]
-                    self.logs.append(Moving(sectionXPos,lane[0],pygame.image.load(imChoice), minSpeed = laneSpeed, maxSpeed = laneSpeed, width = w,startDir=lane[1]))
+                    self.logs.append(Moving(sectionXPos,lane[0],pygame.image.load(imChoice), minSpeed = laneSpeed, maxSpeed = laneSpeed, width = w, height = 22,startDir=lane[1]))
         self.turtleLanes = [[self.rowHeight*3,0],
                             [self.rowHeight*6,1]]
         self.turtlesIm = ['Frogger Images/Turtle 1.png','Frogger Images/Turtle 2.png','Frogger Images/Turtle 3.png','Frogger Images/Turtle 4.png','Frogger Images/Turtle 5.png']
@@ -174,13 +181,21 @@ class Game ():
                 exit()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT:
-                    self.frogger.onLeftArrowPressed()
+                    if self.frogger.pos[0] > 0:
+                        self.frogger.onLeftArrowPressed()
                 if event.key == pygame.K_RIGHT:
-                    self.frogger.onRightArrowPressed()
+                    if self.frogger.pos[0] < self.screenW - self.frogger.width:
+                        self.frogger.onRightArrowPressed()
                 if event.key == pygame.K_UP:
-                    self.frogger.onUpArrowPressed()
+                    if self.frogger.pos[1] > 0 + self.frogger.height:
+                        self.frogger.onUpArrowPressed()
+                        currentRow = self.screenH-self.frogger.pos[1]//self.rowHeight
+                        if  currentRow > self.highestRow:
+                            self.highestRow = currentRow
+                            self.score += 10 
                 if event.key == pygame.K_DOWN:
-                    self.frogger.onDownArrowPressed()
+                    if self.frogger.pos[1] < self.screenH - self.frogger.height*2:
+                        self.frogger.onDownArrowPressed()
                 if event.key == pygame.K_ESCAPE:
                     exit()
     
@@ -188,18 +203,34 @@ class Game ():
         self.screen.fill((0,0,10))
         riverRect = pygame.Rect(0,0,self.screenW,self.rowHeight*7)
         pygame.draw.rect(self.screen,(0,0,100),riverRect)
+        grasssRect = pygame.Rect(0,0,self.screenW,self.rowHeight*2)
+        pygame.draw.rect(self.screen,(0,100,0),grasssRect)
         for log in self.logs:
             log.draw(self.screen)
         for turtle in self.turtles:
             turtle.draw(self.screen)
-        self.frogger.draw(self.screen)
+        if not self.gameOver:
+            self.frogger.draw(self.screen)
         for car in self.cars:
             car.draw(self.screen)
+        # draw score
+        scoreText = self.arcadeFontSmall.render("Score   " + str(self.score),True,(255,255,255))
+        scoreTextRect = scoreText.get_rect()
+        scoreTextRect.bottomleft = (10,self.screenH - 10)
+        self.screen.blit(scoreText, scoreTextRect)
+
         if self.gameOver:
             gameOverText = self.arcadeFont.render("GAME     OVER",True,(0,255,255))
             gameOverTextRect = gameOverText.get_rect()
             gameOverTextRect.center = (self.screenW//2,self.screenW//2 - 50)
             self.screen.blit(gameOverText, gameOverTextRect)
+        
+        if self.victory:
+            victoryText = self.arcadeFont.render("VICTORY",True,(255,255,0))
+            victoryTextRect = victoryText.get_rect()
+            victoryTextRect.center = (self.screenW//2,self.screenW//2 - 50)
+            self.screen.blit(victoryText, victoryTextRect)
+        
         pygame.display.update()
 
     def doInteraction(self):
@@ -208,13 +239,27 @@ class Game ():
         #if self.car.collision(self.frogger):
             #print("HIT!")
         #self.car1.update()
+        closestCar = self.cars[0]
+        smallestDist = 999999999999999
         for car in self.cars:
             dist = car.distTo(self.frogger.pos)
             car.update(self.screenW,dist) 
-            if car.collision(self.frogger):
-                self.frogger.death()
+            if dist < smallestDist:
+                smallestDist = dist
+                closestCar = car
+            if car.collision(self.frogger) and not self.gameOver:
+                self.frogger.deathSquish()
                 self.gameOver = True
                 return
+        
+        if not self.frogger.pos[1] < self.rowHeight*7:
+            self.riverNoise.stop()
+            closestCar.playSound(dist)
+        else:
+            closestCar.stopSound()
+            if not pygame.mixer.get_busy():
+                self.riverNoise.play()
+
         
         for log in self.logs:
             log.update(self.screenW)
@@ -239,16 +284,27 @@ class Game ():
                     self.frogger.pos[0] += self.diff
                     onTurtle = True
                     return
-            if not onLog and not onTurtle:
-                self.frogger.death()
+            if not onLog and not onTurtle and not self.gameOver:
+                self.frogger.deathPlop()
                 self.gameOver = True
                 return
+        
+        # winning condition
+        if self.frogger.pos[1] < self.rowHeight * 2:
+            if not self.victory:
+                self.victory = True
+                self.score += 600
+            elif self.victoryTime > 3000: #time in miliseconds
+                self.setup()
+            else:
+                self.victoryTime += self.deltaT
+
 
 class Frogger():
     def __init__(self, froggerSitIm, froggerJumpIm, scale = 32, jmpAmt = 5, jmpTime = 1000, pos = [400,300]):
         self.frogImSit = froggerSitIm
         self.frogImJump = froggerJumpIm
-        self.frogImSit = pygame.transform.scale(self.frogImSit,(scale,scale))
+        self.frogImSit = pygame.transform.scale(self.frogImSit,(scale,int(scale*0.8)))
         self.frogImJump = pygame.transform.scale(self.frogImJump,(scale,scale))
         self.frogIm = self.frogImSit
         self.pos = pos
@@ -258,6 +314,9 @@ class Frogger():
         self.jumpCountdown = 0
         self.jumpAmount = jmpAmt
         self.angle = 0
+        self.frogNoise = pygame.mixer.Sound("Sounds/Frog Noise.wav")
+        self.plop = pygame.mixer.Sound("Sounds/Plop.wav")
+        self.squish = pygame.mixer.Sound("Sounds/Squish.wav")
 
     def doJumpAnim(self,dir):
         self.frogIm = pygame.transform.rotate(self.frogImJump, self.angle)
@@ -267,21 +326,29 @@ class Frogger():
         self.angle = 0
         self.pos[1] -= self.jumpAmount
         self.doJumpAnim(1)
+        self.croak()
 
     def onLeftArrowPressed(self):
         self.angle = 90
         self.pos[0] -= self.jumpAmount
         self.doJumpAnim(0)
+        self.croak()
 
     def onDownArrowPressed(self):
         self.angle = 180
         self.pos[1] += self.jumpAmount
         self.doJumpAnim(1)
+        self.croak()
         
     def onRightArrowPressed(self):
         self.angle = 270
         self.pos[0] += self.jumpAmount
         self.doJumpAnim(0)
+        self.croak()
+
+    def croak(self):
+        if random.uniform(0,1) < 0.2:
+            self.frogNoise.play()
 
     def update(self, deltaT):
         if self.jumpCountdown > 0:
@@ -293,10 +360,13 @@ class Frogger():
         frogRect = self.frogIm.get_rect()
         surf.blit(self.frogIm, (self.pos[0],self.pos[1],frogRect[2],frogRect[3]))
 
-    def death(self):
+    def deathPlop(self):
         # TODO: death images
         #self.frogIm =     
-        pass
+        self.plop.play()
+
+    def deathSquish(self):
+        self.squish.play()
         
 
 class Moving():
@@ -333,6 +403,20 @@ class Moving():
         b = self.pos[1] - otherPos[1]
         return pythag(a,b)
 
+    def playSound(self,dist = 0):
+        vol = dist/400*-1+1
+        if vol < 0:
+            vol = 0
+        if vol > 1:
+            vol = 1
+        self.carEngineLoop.set_volume(vol)
+        if not pygame.mixer.get_busy():
+            if not vol == 0:
+                self.carEngineLoop.play()
+    
+    def stopSound(self):
+        self.carEngineLoop.stop()
+
     def update(self,screenW,dist = 0,deltaT = 0):
         if self.dir == 0:
             self.pos[0] += self.speed
@@ -342,11 +426,6 @@ class Moving():
             self.pos[0] = -self.width  
         if self.pos[0] < -self.width:
             self.pos[0] = screenW
-
-        # Sound
-        
-        self.carEngineLoop.set_volume(dist)
-        self.carEngineLoop.play(-1)
         
         if self.animates:
             if self.animDeltaT > self.animTime:
